@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <title>عرض تشريحي 3D</title>
+    <style>
+        body { margin: 0; overflow: hidden; background-color: #111; }
+        
+        /* تصميم المسميات */
+        .annotation-label {
+            color: #fff;
+            background-color: rgba(255, 50, 50, 0.8);
+            padding: 8px 12px;
+            border-radius: 6px;
+            border: 1px solid #fff;
+            font-family: Arial, sans-serif;
+            font-weight: bold;
+            cursor: pointer;
+            pointer-events: auto; /* ضروري للسماح بالنقر */
+            transition: transform 0.2s;
+        }
+        .annotation-label:hover {
+            transform: scale(1.1);
+            background-color: rgba(255, 0, 0, 1);
+        }
+
+        /* تصميم نافذة الصورة التشريحية */
+        #anatomy-viewer {
+            display: none; /* مخفية افتراضياً */
+            position: fixed;
+            top: 0; left: 0;
+            width: 100vw; height: 100vh;
+            background-color: rgba(0, 0, 0, 0.9);
+            z-index: 1000;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            flex-direction: column;
+        }
+        #anatomy-image {
+            max-width: 80%;
+            max-height: 70%;
+            border: 3px solid #fff;
+            border-radius: 8px;
+            margin-bottom: 20px;
+        }
+        #close-btn {
+            padding: 10px 30px;
+            font-size: 18px;
+            background-color: #fff;
+            color: #000;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-weight: bold;
+        }
+    </style>
+
+    <!-- استدعاء Three.js والأدوات المطلوبة -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/gh/mrdoob/three.js@r128/examples/js/controls/OrbitControls.js"></script>
+    <script src="https://cdn.jsdelivr.net/gh/mrdoob/three.js@r128/examples/js/loaders/OBJLoader.js"></script>
+    <script src="https://cdn.jsdelivr.net/gh/mrdoob/three.js@r128/examples/js/renderers/CSS2DRenderer.js"></script>
+</head>
+<body>
+
+    <!-- نافذة عرض الصورة التشريحية -->
+    <div id="anatomy-viewer" style="display: none;">
+        <img id="anatomy-image" src="" alt="صورة تشريحية">
+        <button id="close-btn">رجوع للمجسم</button>
+    </div>
+
+    <script>
+        let scene, camera, renderer, labelRenderer, controls;
+
+        init();
+        animate();
+
+        function init() {
+            // إعداد المشهد والكاميرا
+            scene = new THREE.Scene();
+            camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 100);
+            camera.position.set(0, 0, 10); // ابتعد بالكاميرا قليلاً لتناسب المجسم
+
+            // إعداد إضاءة جيدة لتوضيح معالم المجسم
+            const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+            scene.add(ambientLight);
+            const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
+            directionalLight.position.set(10, 10, 10);
+            scene.add(directionalLight);
+
+            // إعداد المصير (Renderer) للـ 3D
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.domElement.style.touchAction = 'none';
+            document.body.appendChild(renderer.domElement);
+
+            // إعداد المصير (Renderer) للمسميات 2D
+            labelRenderer = new THREE.CSS2DRenderer();
+            labelRenderer.setSize(window.innerWidth, window.innerHeight);
+            labelRenderer.domElement.style.position = 'absolute';
+            labelRenderer.domElement.style.top = '0px';
+            labelRenderer.domElement.style.pointerEvents = 'none'; // لتمرير الماوس للمجسم
+            document.body.appendChild(labelRenderer.domElement);
+
+            // إعداد التحكم بالماوس (OrbitControls)
+            controls = new THREE.OrbitControls(camera, renderer.domElement);
+            controls.enableDamping = true;
+
+            // تحميل المجسم بصيغة OBJ
+            const objLoader = new THREE.OBJLoader();
+            
+            // استخدم اسم الملف الخاص بك تماماً كما هو موجود في المجلد
+            objLoader.load('./Open3DModel_FIle.obj', function (object) {
+                // تلوين المجسم أو تركه بلونه الافتراضي
+                object.traverse(function(child) {
+                    if (child.isMesh) {
+                        const isLowerJaw = child.name === 'lowgums' || child.name.endsWith('l');
+                        const isGum = child.name.toLowerCase().includes('gums');
+
+                        if (isLowerJaw) child.position.y -= 1.2;
+                        child.material = new THREE.MeshPhongMaterial({
+                            color: isGum ? 0xa35f5a : 0xf1e4c7
+                        });
+                    }
+                });
+                
+                scene.add(object);
+
+                // بعد تحميل المجسم، أضف المسميات عليه
+                // ملاحظة: الأرقام (x, y, z) يجب تعديلها لتطابق أماكن الأجزاء على مجسمك الفعلي
+                createAnnotation('الجذر الأمامي', new THREE.Vector3(1, 2, 0), 'anatomy_root.jpg');
+                createAnnotation('المينا', new THREE.Vector3(-1, 3, 1), 'anatomy_enamel.jpg');
+                
+            }, undefined, function (error) {
+                console.error("حدث خطأ في تحميل المجسم:", error);
+            });
+
+            window.addEventListener('resize', onWindowResize, false);
+        }
+
+        // دالة إنشاء المسميات التفاعلية
+        function createAnnotation(text, position, imageUrl) {
+            const div = document.createElement('div');
+            div.className = 'annotation-label';
+            div.textContent = text;
+
+            // حدث النقر لفتح الصورة
+            div.onclick = function() {
+                document.getElementById('anatomy-image').src = imageUrl;
+                document.getElementById('anatomy-viewer').style.display = 'flex';
+            };
+
+            const label = new THREE.CSS2DObject(div);
+            label.position.copy(position);
+            scene.add(label);
+        }
+
+        // حدث زر الرجوع
+        document.getElementById('close-btn').onclick = function() {
+            document.getElementById('anatomy-viewer').style.display = 'none';
+            document.getElementById('anatomy-image').src = ''; // تفريغ الصورة
+        };
+
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            labelRenderer.setSize(window.innerWidth, window.innerHeight);
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+            controls.update();
+            renderer.render(scene, camera);
+            labelRenderer.render(scene, camera); // تصيير المسميات مع المشهد
+        }
+    </script>
+</body>
+</html>

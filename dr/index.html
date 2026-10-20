@@ -1,0 +1,1363 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#07101c">
+  <title>عارض المجسم التشريحي ثلاثي الأبعاد</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      font-family: "Segoe UI", Tahoma, sans-serif;
+      background: #07101c;
+      color: #e8f4f5;
+      font-synthesis: none;
+      text-rendering: optimizeLegibility;
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+    }
+
+    * { box-sizing: border-box; }
+
+    html, body {
+      width: 100%;
+      min-width: 320px;
+      min-height: 100%;
+      margin: 0;
+    }
+
+    body {
+      min-height: 100vh;
+      min-height: 100dvh;
+      overflow: hidden;
+      background: radial-gradient(ellipse at 50% 45%, #102c3a 0%, #091725 48%, #050b13 100%);
+    }
+
+    button { font: inherit; }
+
+    .viewer {
+      position: relative;
+      width: 100%;
+      height: 100vh;
+      height: 100dvh;
+      min-height: 320px;
+      overflow: hidden;
+      isolation: isolate;
+    }
+
+    #model-canvas {
+      position: absolute;
+      inset: 0;
+      z-index: 0;
+      touch-action: none;
+    }
+
+    #model-canvas canvas { display: block; width: 100%; height: 100%; }
+
+    #label-layer {
+      position: absolute;
+      inset: 0;
+      z-index: 1;
+      pointer-events: none;
+    }
+
+    #label-layer > div { pointer-events: none; }
+
+    .mode-content { display: contents; }
+
+    .model-stage {
+      position: absolute;
+      z-index: 0;
+      inset: 0;
+      overflow: hidden;
+    }
+
+    .panel {
+      border: 1px solid rgba(146, 208, 213, .2);
+      border-radius: 16px;
+      background: rgba(7, 19, 29, .82);
+      box-shadow: 0 12px 40px rgba(0, 0, 0, .22);
+      -webkit-backdrop-filter: blur(14px);
+      backdrop-filter: blur(14px);
+    }
+
+    .topbar {
+      position: absolute;
+      z-index: 4;
+      top: max(16px, env(safe-area-inset-top));
+      left: max(16px, env(safe-area-inset-left));
+      right: max(16px, env(safe-area-inset-right));
+      display: grid;
+      min-height: 58px;
+      place-items: center;
+      padding: 12px 18px;
+      border-radius: 18px;
+    }
+
+    .heading { min-width: 0; text-align: center; }
+    h1 {
+      margin: 0;
+      font-size: clamp(16px, 2vw, 22px);
+      font-weight: 700;
+      line-height: 1.45;
+    }
+
+    .status {
+      position: absolute;
+    }
+
+    .status[data-state="ready"] { color: #75d8ad; }
+    .status[data-state="error"] { color: #ff8e8e; }
+
+    .mode-bar {
+      position: absolute;
+      z-index: 5;
+      top: 50%;
+      right: max(16px, env(safe-area-inset-right));
+      display: flex;
+      flex-direction: column;
+      gap: 7px;
+      padding: 8px;
+      overflow: visible;
+      border-radius: 30px;
+      transform: translateY(-50%);
+    }
+
+    .mode-button {
+      position: relative;
+      display: grid;
+      width: 48px;
+      height: 48px;
+      flex: 0 0 auto;
+      place-items: center;
+      padding: 0;
+      border: 1px solid rgba(125, 199, 205, .24);
+      border-radius: 50%;
+      background: rgba(19, 43, 55, .82);
+      color: #d7e8eb;
+      cursor: pointer;
+      transition: background-color .18s ease, border-color .18s ease, color .18s ease;
+    }
+
+    .mode-button svg { width: 23px; height: 23px; }
+    .mode-button .mode-tooltip {
+      position: absolute;
+      top: 50%;
+      right: calc(100% + 12px);
+      width: max-content;
+      max-width: min(220px, 60vw);
+      padding: 8px 12px;
+      border: 1px solid rgba(146, 208, 213, .28);
+      border-radius: 9px;
+      background: rgba(7, 19, 29, .96);
+      color: #e8f4f5;
+      font-size: 13px;
+      font-weight: 600;
+      box-shadow: 0 8px 24px rgba(0, 0, 0, .28);
+      opacity: 0;
+      pointer-events: none;
+      transform: translate(5px, -50%);
+      transition: opacity .16s ease, transform .16s ease;
+    }
+    .mode-button[data-armed="true"] .mode-tooltip {
+      opacity: 1;
+      transform: translate(0, -50%);
+    }
+
+    .mode-button:hover:not(:disabled) { border-color: #6bc5c2; background: #1b4652; }
+    .mode-button.mode-active,
+    .mode-button[aria-pressed="true"] {
+      border-color: #55c9a4;
+      background: rgba(39, 100, 88, .76);
+      color: #a0f2ca;
+      box-shadow: inset 0 0 0 1px rgba(85, 201, 164, .2);
+    }
+
+    .mode-image-preview {
+      position: absolute;
+      z-index: 3;
+      top: 160px;
+      right: max(16px, env(safe-area-inset-right));
+      width: min(340px, calc(100% - 32px));
+      padding: 12px;
+      text-align: center;
+    }
+
+    .mode-image-preview[hidden] { display: none; }
+    .mode-image-preview img {
+      display: block;
+      width: 100%;
+      max-height: 36vh;
+      border-radius: 9px;
+      object-fit: contain;
+      background: rgba(0, 0, 0, .25);
+      transform-origin: center;
+      cursor: grab;
+      touch-action: none;
+      user-select: none;
+      -webkit-user-drag: none;
+    }
+    .mode-image-preview img.is-dragging { cursor: grabbing; }
+    .mode-image-preview img[hidden] { display: none; }
+
+    .mode-image-zoom-controls {
+      position: absolute;
+      top: 10px;
+      left: 10px;
+      display: flex;
+      gap: 6px;
+    }
+
+    .mode-image-zoom-controls button {
+      display: grid;
+      width: 36px;
+      height: 36px;
+      place-items: center;
+      border: 1px solid rgba(255, 255, 255, .35);
+      border-radius: 9px;
+      background: rgba(7, 19, 29, .78);
+      color: #fff;
+      font-size: 20px;
+      cursor: pointer;
+    }
+    .mode-image-zoom-controls button:focus-visible { outline: 2px solid #8be6bd; }
+
+    .mode-image-caption {
+      margin: 9px 0 0;
+      color: #e8f4f5;
+      font-size: 15px;
+      font-weight: 700;
+    }
+
+    .mode-image-error {
+      margin: 0;
+      color: #ffb6b6;
+      line-height: 1.6;
+    }
+    .mode-image-error[hidden] { display: none; }
+
+    .viewer.split-mode .mode-content {
+      position: absolute;
+      z-index: 2;
+      top: calc(max(16px, env(safe-area-inset-top)) + 80px);
+      right: calc(max(16px, env(safe-area-inset-right)) + 68px);
+      bottom: 104px;
+      left: max(16px, env(safe-area-inset-left));
+      display: grid;
+      grid-template-rows: minmax(0, 1fr) minmax(0, 1fr);
+      gap: 10px;
+      min-height: 0;
+    }
+
+    .viewer.landing-mode .mode-content {
+      position: absolute;
+      z-index: 2;
+      top: calc(max(16px, env(safe-area-inset-top)) + 80px);
+      right: calc(max(16px, env(safe-area-inset-right)) + 68px);
+      bottom: 84px;
+      left: max(16px, env(safe-area-inset-left));
+      display: grid;
+      grid-template-rows: minmax(150px, .7fr) minmax(0, 1.3fr);
+      gap: 10px;
+      min-height: 0;
+    }
+
+    .study-gallery[hidden] { display: none; }
+    .study-gallery {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 10px;
+      min-height: 0;
+      padding: 10px;
+    }
+
+    .study-card {
+      display: flex;
+      min-width: 0;
+      min-height: 0;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 7px;
+      padding: 8px;
+      overflow: hidden;
+      border: 1px solid rgba(125, 199, 205, .24);
+      border-radius: 12px;
+      background: rgba(19, 43, 55, .64);
+      color: #e8f4f5;
+      cursor: pointer;
+      transition: border-color .18s ease, background-color .18s ease, transform .18s ease;
+    }
+
+    .study-card:hover { border-color: #6bc5c2; background: rgba(27, 70, 82, .82); transform: translateY(-2px); }
+    .study-card:focus-visible { outline: 2px solid #8be6bd; outline-offset: 2px; }
+    .study-card img {
+      display: block;
+      width: 100%;
+      height: calc(100% - 32px);
+      min-height: 0;
+      border-radius: 8px;
+      object-fit: cover;
+      object-position: center 30%;
+    }
+    .study-card span { font-size: clamp(12px, 1.5vw, 16px); font-weight: 700; text-align: center; }
+
+    .viewer.landing-mode .model-stage {
+      position: relative;
+      inset: auto;
+      z-index: 0;
+      min-width: 0;
+      min-height: 0;
+      border: 1px solid rgba(146, 208, 213, .3);
+      border-radius: 14px;
+      background: rgba(7, 19, 29, .82);
+      box-shadow: 0 12px 40px rgba(0, 0, 0, .22);
+      touch-action: none;
+    }
+
+    .viewer.landing-mode .model-stage #model-canvas,
+    .viewer.landing-mode .model-stage #label-layer {
+      position: absolute;
+      inset: 0;
+    }
+
+    .viewer.split-mode .mode-image-preview,
+    .viewer.split-mode .model-stage {
+      position: relative;
+      inset: auto;
+      width: auto;
+      min-width: 0;
+      min-height: 0;
+      overflow: hidden;
+      border: 1px solid rgba(146, 208, 213, .3);
+      border-radius: 14px;
+      background: rgba(7, 19, 29, .82);
+      box-shadow: 0 12px 40px rgba(0, 0, 0, .22);
+      -webkit-backdrop-filter: blur(14px);
+      backdrop-filter: blur(14px);
+    }
+
+    .viewer.split-mode .mode-image-preview {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      padding: 10px;
+    }
+
+    .viewer.split-mode .mode-image-preview[hidden] { display: none; }
+
+    .viewer.split-mode .mode-image-preview img {
+      width: 100%;
+      height: calc(100% - 32px);
+      max-height: none;
+      min-height: 0;
+    }
+
+    .viewer.split-mode .mode-image-caption { margin: 0; }
+
+    .viewer.split-mode .model-stage #model-canvas,
+    .viewer.split-mode .model-stage #label-layer {
+      position: absolute;
+      inset: 0;
+    }
+
+    .viewer.split-mode .model-stage {
+      z-index: 0;
+      touch-action: none;
+    }
+
+    .bottom-bar {
+      position: absolute;
+      z-index: 3;
+      left: 50%;
+      bottom: max(16px, env(safe-area-inset-bottom));
+      width: min(760px, calc(100% - 32px));
+      padding: 12px 18px;
+      border-radius: 18px;
+      transform: translateX(-50%);
+    }
+
+    .hint {
+      margin: 0;
+      color: #a5bac1;
+      font-size: 13px;
+      line-height: 1.6;
+      text-align: center;
+    }
+
+    .control {
+      min-height: 44px;
+      padding: 9px 14px;
+      border: 1px solid rgba(125, 199, 205, .3);
+      border-radius: 10px;
+      background: rgba(19, 43, 55, .86);
+      color: #e8f4f5;
+      cursor: pointer;
+      transition: background-color .18s ease, border-color .18s ease;
+    }
+
+    .control:hover:not(:disabled) { border-color: #6bc5c2; background: #1b4652; }
+    .control[aria-pressed="true"] { border-color: #55c9a4; color: #8be6bd; }
+    .control:focus-visible, .mode-button:focus-visible, #close-btn:focus-visible {
+      outline: 2px solid #8be6bd;
+      outline-offset: 3px;
+    }
+    .control:disabled, .mode-button:disabled { cursor: wait; opacity: .5; }
+
+    .message {
+      position: absolute;
+      z-index: 4;
+      top: 50%;
+      left: 50%;
+      width: min(440px, calc(100% - 40px));
+      padding: 20px 22px;
+      transform: translate(-50%, -50%);
+      text-align: center;
+    }
+
+    .message[hidden] { display: none; }
+    .message p { margin: 0; line-height: 1.7; }
+    .message .control { margin-top: 14px; }
+
+    .annotation-label {
+      padding: 8px 11px;
+      border: 1px solid rgba(255, 255, 255, .9);
+      border-radius: 8px;
+      background: rgba(133, 48, 46, .92);
+      color: #fff;
+      font-weight: 700;
+      white-space: nowrap;
+      cursor: pointer;
+      pointer-events: auto;
+      box-shadow: 0 4px 16px rgba(0, 0, 0, .35);
+      transition: transform .18s ease, background-color .18s ease;
+    }
+
+    .annotation-label:hover { transform: scale(1.06); background: #b93232; }
+    .annotation-label:focus-visible { outline: 2px solid #fff; outline-offset: 3px; }
+
+    #anatomy-viewer[hidden] { display: none; }
+    #anatomy-viewer {
+      position: fixed;
+      z-index: 10;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-direction: column;
+      gap: 18px;
+      padding: max(20px, env(safe-area-inset-top)) 20px max(20px, env(safe-area-inset-bottom));
+      background: rgba(0, 0, 0, .9);
+    }
+
+    #anatomy-image {
+      display: none;
+      max-width: min(90vw, 1100px);
+      max-height: 65vh;
+      border: 2px solid rgba(255, 255, 255, .8);
+      border-radius: 10px;
+      object-fit: contain;
+      touch-action: none;
+      user-select: none;
+      -webkit-user-drag: none;
+      cursor: grab;
+      transform-origin: center;
+    }
+    #anatomy-image.is-dragging { cursor: grabbing; }
+
+    #anatomy-caption {
+      margin: 0;
+      color: #e8f4f5;
+      font-size: 18px;
+      font-weight: 700;
+      text-align: center;
+    }
+
+    #anatomy-fallback {
+      width: min(560px, 90vw);
+      padding: 28px;
+      border: 1px solid rgba(146, 208, 213, .3);
+      border-radius: 14px;
+      background: rgba(7, 19, 29, .9);
+      color: #d7e8eb;
+      line-height: 1.8;
+      text-align: center;
+    }
+
+    #close-btn {
+      position: fixed;
+      z-index: 2;
+      top: max(16px, env(safe-area-inset-top));
+      right: max(16px, env(safe-area-inset-right));
+      min-height: 44px;
+      padding: 10px 24px;
+      border: 0;
+      border-radius: 9px;
+      background: #e8f4f5;
+      color: #10202a;
+      font-weight: 700;
+      cursor: pointer;
+    }
+
+    .anatomy-zoom-controls {
+      position: fixed;
+      z-index: 2;
+      top: max(16px, env(safe-area-inset-top));
+      left: max(16px, env(safe-area-inset-left));
+      display: flex;
+      gap: 7px;
+    }
+
+    .anatomy-zoom-controls button {
+      display: grid;
+      width: 44px;
+      height: 44px;
+      place-items: center;
+      border: 1px solid rgba(255, 255, 255, .35);
+      border-radius: 12px;
+      background: rgba(7, 19, 29, .86);
+      color: #fff;
+      font-size: 23px;
+      cursor: pointer;
+    }
+
+    @media (max-width: 600px) {
+      .topbar {
+        top: max(10px, env(safe-area-inset-top));
+        left: max(10px, env(safe-area-inset-left));
+        right: max(10px, env(safe-area-inset-right));
+        min-height: 52px;
+        padding: 9px 12px;
+        border-radius: 13px;
+      }
+
+      h1 { font-size: clamp(15px, 4vw, 18px); }
+      .mode-bar {
+        top: 50%;
+        right: max(10px, env(safe-area-inset-right));
+        gap: 6px;
+        padding: 7px;
+      }
+      .mode-button { width: 43px; height: 43px; }
+      .mode-button svg { width: 20px; height: 20px; }
+      .mode-button .mode-tooltip { font-size: 12px; }
+      .mode-image-zoom-controls { top: 6px; left: 6px; }
+      .mode-image-zoom-controls button { width: 32px; height: 32px; }
+      .mode-image-preview {
+        top: calc(max(10px, env(safe-area-inset-top)) + 130px);
+        right: max(10px, env(safe-area-inset-right));
+        width: min(280px, calc(100% - 20px));
+        padding: 9px;
+      }
+      .mode-image-preview img { max-height: 27vh; }
+      .viewer.split-mode .mode-content {
+        top: calc(max(10px, env(safe-area-inset-top)) + 68px);
+        right: calc(max(10px, env(safe-area-inset-right)) + 62px);
+        bottom: 78px;
+        left: max(10px, env(safe-area-inset-left));
+        gap: 8px;
+      }
+      .viewer.split-mode .mode-image-preview { padding: 7px; }
+      .viewer.split-mode .mode-image-preview img { height: calc(100% - 27px); }
+      .viewer.split-mode .mode-image-caption { font-size: 13px; }
+      .viewer.landing-mode .mode-content {
+        top: calc(max(10px, env(safe-area-inset-top)) + 62px);
+        right: calc(max(10px, env(safe-area-inset-right)) + 58px);
+        bottom: 62px;
+        left: max(10px, env(safe-area-inset-left));
+        grid-template-rows: minmax(100px, .65fr) minmax(0, 1.35fr);
+        gap: 7px;
+      }
+      .study-gallery { gap: 6px; padding: 6px; }
+      .study-card { gap: 4px; padding: 5px; border-radius: 9px; }
+      .study-card img { height: calc(100% - 26px); border-radius: 6px; }
+      .study-card span { font-size: 11px; }
+      .bottom-bar {
+        bottom: max(10px, env(safe-area-inset-bottom));
+        width: calc(100% - 20px);
+        padding: 9px 12px;
+        border-radius: 13px;
+      }
+
+      .hint { font-size: 12px; }
+      .control { padding: 9px 8px; font-size: 13px; }
+    }
+
+    @media (max-height: 450px) and (orientation: landscape) {
+      .topbar { top: 8px; padding: 8px 12px; }
+      .bottom-bar { bottom: 8px; width: calc(100% - 16px); padding: 8px; }
+      .control { min-height: 40px; padding: 7px 10px; }
+      #close-btn { top: 10px; right: 10px; min-height: 40px; padding: 8px 16px; }
+      .anatomy-zoom-controls { top: 10px; left: 10px; }
+      .anatomy-zoom-controls button { width: 40px; height: 40px; }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after {
+        scroll-behavior: auto !important;
+        transition-duration: .01ms !important;
+      }
+    }
+  </style>
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+        "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+      }
+    }
+  </script>
+</head>
+<body>
+  <main class="viewer landing-mode" aria-label="عارض المجسم التشريحي ثلاثي الأبعاد">
+    <header class="topbar panel">
+      <div class="heading">
+        <h1 id="viewer-title">صورة ثلاثية الأبعاد للفكين والأسنان</h1>
+      </div>
+      <div id="model-status" class="status visually-hidden" role="status" aria-live="polite" data-state="loading">جارٍ تحميل المجسم...</div>
+    </header>
+
+    <nav class="mode-bar panel" aria-label="أوضاع عرض المجسم">
+      <button class="mode-button mode-active" type="button" data-mode="default" data-armed="false" aria-label="الوضع الافتراضي" aria-pressed="true" disabled>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m3 10 9-7 9 7v10a1 1 0 0 1-1 1h-6v-7h-4v7H4a1 1 0 0 1-1-1z"/></svg>
+        <span class="mode-tooltip" aria-hidden="true">الوضع الافتراضي</span>
+      </button>
+      <button class="mode-button" type="button" data-mode="osteology" data-armed="false" aria-label="التكوين العظمي" aria-pressed="false" disabled>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 3a3 3 0 0 0-3 3c0 1 .5 1.8 1.2 2.4L5 13a3 3 0 1 0 4 4l3-1 3 1a3 3 0 1 0 4-4l-1.2-4.6A3 3 0 1 0 14 5l-2 1-2-1a3 3 0 0 0-2-2z"/><path d="m9 9 1.5 1.5M15 9l-1.5 1.5M12 11v3"/></svg>
+        <span class="mode-tooltip" aria-hidden="true">التكوين العظمي</span>
+      </button>
+      <button class="mode-button" type="button" data-mode="myology" data-armed="false" aria-label="التكوين العضلي" aria-pressed="false" disabled>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 20c-2.5 0-4-1.7-4-4 0-2.5 2-4 4-4h2l2-5c.5-1.3 2-2 3.2-1.5L16 6l-1 4 3 1c2.2.7 3 2 3 4 0 3-2.5 5-6 5z"/><path d="m9 12 2 3 4-2"/></svg>
+        <span class="mode-tooltip" aria-hidden="true">التكوين العضلي</span>
+      </button>
+      <button class="mode-button" type="button" data-mode="neurology" data-armed="false" aria-label="الشبكة العصبية" aria-pressed="false" disabled>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="2"/><circle cx="5" cy="5" r="1.5"/><circle cx="19" cy="5" r="1.5"/><circle cx="5" cy="19" r="1.5"/><circle cx="19" cy="19" r="1.5"/><path d="m10.6 10.6-4.5-4.5m7.3 4.5 4.5-4.5m-7.3 7.3-4.5 4.5m7.3-4.5 4.5 4.5M12 10V4m0 10v6"/></svg>
+        <span class="mode-tooltip" aria-hidden="true">الشبكة العصبية</span>
+      </button>
+    </nav>
+
+    <div class="mode-content">
+      <aside id="mode-image-preview" class="mode-image-preview panel" aria-live="polite" hidden>
+        <img id="mode-image" alt="">
+        <div class="mode-image-zoom-controls" aria-label="تكبير وتصغير الصورة">
+          <button id="zoom-in-btn" type="button" aria-label="تكبير الصورة">+</button>
+          <button id="zoom-out-btn" type="button" aria-label="تصغير الصورة">−</button>
+        </div>
+        <p id="mode-image-caption" class="mode-image-caption"></p>
+        <p id="mode-image-error" class="mode-image-error" role="alert" hidden></p>
+      </aside>
+      <section id="study-gallery" class="study-gallery panel" aria-label="صور تشريحية للفكين">
+        <button class="study-card" type="button" data-study-image="./1.png" data-study-title="البنية والوظيفة">
+          <img src="./1.png" alt="" draggable="false">
+          <span>البنية والوظيفة</span>
+        </button>
+        <button class="study-card" type="button" data-study-image="./2.png" data-study-title="التغذية العصبية">
+          <img src="./2.png" alt="" draggable="false">
+          <span>التغذية العصبية</span>
+        </button>
+        <button class="study-card" type="button" data-study-image="./3.png" data-study-title="تشريح السن">
+          <img src="./3.png" alt="" draggable="false">
+          <span>تشريح السن</span>
+        </button>
+      </section>
+      <div class="model-stage">
+        <div id="model-canvas" aria-label="منطقة عرض المجسم"></div>
+        <div id="label-layer" aria-label="المسميات التشريحية"></div>
+      </div>
+    </div>
+
+    <section id="model-message" class="message panel" role="alert" hidden>
+      <p id="model-error">تعذر تحميل ملف المجسم.</p>
+      <button id="retry-btn" class="control" type="button">إعادة المحاولة</button>
+    </section>
+
+    <footer class="bottom-bar panel">
+      <p class="hint">اسحب لتدوير المجسم، واستخدم العجلة أو اللمس للتكبير والتصغير.</p>
+    </footer>
+
+    <div id="anatomy-viewer" role="dialog" aria-modal="true" aria-labelledby="anatomy-title" hidden>
+      <h2 id="anatomy-title" class="visually-hidden">عرض تشريحي</h2>
+      <div class="anatomy-zoom-controls" aria-label="تكبير وتصغير الصورة">
+        <button id="anatomy-zoom-in" type="button" aria-label="تكبير الصورة">+</button>
+        <button id="anatomy-zoom-out" type="button" aria-label="تصغير الصورة">−</button>
+      </div>
+      <img id="anatomy-image" alt="صورة تشريحية">
+      <p id="anatomy-caption" hidden></p>
+      <p id="anatomy-fallback" role="status" aria-live="polite" hidden></p>
+      <button id="close-btn" type="button">العودة إلى المجسم</button>
+    </div>
+  </main>
+
+  <style>
+    .visually-hidden {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      padding: 0;
+      margin: -1px;
+      overflow: hidden;
+      clip: rect(0, 0, 0, 0);
+      white-space: nowrap;
+      border: 0;
+    }
+  </style>
+
+  <script type="module">
+    import * as THREE from 'three';
+    import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+    import { OBJLoader } from 'three/addons/loaders/OBJLoader.js';
+    import { CSS2DObject, CSS2DRenderer } from 'three/addons/renderers/CSS2DRenderer.js';
+
+    // عدّل قواعد الأسماء والألوان هنا لتكييف الأوضاع مع أسماء مجموعات ملف OBJ.
+    const CONFIG = {
+      modelUrl: './Open3DModel_FIle.obj',
+      dimOpacity: 0.12,
+      modes: {
+        default: {
+          label: 'الوضع الافتراضي',
+          color: 0xf1e4c7,
+          gumColor: 0xa35f5a,
+          match: /./,
+          labels: ['الأسنان واللثة'],
+          dimOthers: false
+        },
+        osteology: {
+          label: 'التكوين العظمي',
+          match: /bone|teeth|tooth|root|skull|mandible|maxilla|cent|lat|canine|prem(?:ol)?|molar/i,
+          color: 0xf5efe0,
+          dimOthers: true
+        },
+        neurology: {
+          label: 'الشبكة العصبية',
+          match: /nerve|neuro|canal|foramen/i,
+          color: 0xffd166,
+          emissive: 0x664400,
+          dimOthers: true
+        },
+        myology: {
+          label: 'التكوين العضلي',
+          match: /muscle|gum|gingiva|soft/i,
+          color: 0xc0392b,
+          dimOthers: true
+        }
+      }
+    };
+
+    // المسميات تُعرض بحسب الوضع فقط؛ المواضع هنا نسبية إلى أبعاد المجسم ومهيأة للتعديل.
+    const LABELS_BY_MODE = {
+      default: [
+        { text: 'المجسم التشريحي', position: [0, 0.6, 0] }
+      ],
+      osteology: [
+        { text: 'التكوين العظمي', position: [0, 0.65, 0], image: 'osteology' }
+      ],
+      neurology: [
+        { text: 'الشبكة العصبية', position: [0, 0.45, 0], image: 'neurology' }
+      ],
+      myology: [
+        { text: 'التكوين العضلي', position: [0, 0.5, 0], image: 'myology' }
+      ]
+    };
+
+    const IMAGE_PATHS = {
+      osteology: './Osteology.png',
+      myology: './Myology.png',
+      neurology: './Neurology.png'
+    };
+
+    const container = document.getElementById('model-canvas');
+    const labelLayer = document.getElementById('label-layer');
+    const viewerTitle = document.getElementById('viewer-title');
+    const status = document.getElementById('model-status');
+    const message = document.getElementById('model-message');
+    const errorText = document.getElementById('model-error');
+    const retryButton = document.getElementById('retry-btn');
+    const modeButtons = [...document.querySelectorAll('.mode-button')];
+    const anatomyViewer = document.getElementById('anatomy-viewer');
+    const anatomyTitle = document.getElementById('anatomy-title');
+    const anatomyImage = document.getElementById('anatomy-image');
+    const anatomyCaption = document.getElementById('anatomy-caption');
+    const anatomyFallback = document.getElementById('anatomy-fallback');
+    const closeButton = document.getElementById('close-btn');
+    const modeImagePreview = document.getElementById('mode-image-preview');
+    const modeImage = document.getElementById('mode-image');
+    const modeImageCaption = document.getElementById('mode-image-caption');
+    const modeImageError = document.getElementById('mode-image-error');
+    const zoomInButton = document.getElementById('zoom-in-btn');
+    const zoomOutButton = document.getElementById('zoom-out-btn');
+    const studyGallery = document.getElementById('study-gallery');
+    const studyCards = [...document.querySelectorAll('.study-card')];
+    const anatomyZoomInButton = document.getElementById('anatomy-zoom-in');
+    const anatomyZoomOutButton = document.getElementById('anatomy-zoom-out');
+
+    const scene = new THREE.Scene();
+    const camera = new THREE.PerspectiveCamera(40, 1, 0.1, 1000);
+    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+    renderer.outputColorSpace = THREE.SRGBColorSpace;
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    renderer.toneMappingExposure = 1.15;
+    renderer.domElement.setAttribute('aria-label', 'مجسم ثلاثي الأبعاد قابل للدوران والتكبير');
+    container.appendChild(renderer.domElement);
+
+    const labelRenderer = new CSS2DRenderer();
+    labelRenderer.setSize(1, 1);
+    labelRenderer.domElement.setAttribute('aria-hidden', 'true');
+    labelLayer.appendChild(labelRenderer.domElement);
+
+    scene.add(new THREE.HemisphereLight(0xe8f5ff, 0x382c2a, 2.2));
+    const keyLight = new THREE.DirectionalLight(0xfff2dc, 3.2);
+    keyLight.position.set(5, 8, 7);
+    scene.add(keyLight);
+    const fillLight = new THREE.DirectionalLight(0x9bd9eb, 1.5);
+    fillLight.position.set(-6, 2, -4);
+    scene.add(fillLight);
+
+    const controls = new OrbitControls(camera, renderer.domElement);
+    controls.enableDamping = true;
+    controls.dampingFactor = 0.07;
+    controls.enablePan = true;
+    controls.autoRotate = false;
+    controls.autoRotateSpeed = 1.5;
+    controls.target.set(0, 0, 0);
+
+    const loader = new OBJLoader();
+    const modelUrl = new URL(CONFIG.modelUrl, window.location.href).href;
+    const meshStates = new WeakMap();
+    const knownMeshNames = new Set();
+    const labelGroup = new THREE.Group();
+    labelGroup.name = 'anatomy-labels';
+    scene.add(labelGroup);
+    let model = null;
+    let modelRadius = 1;
+    let modelBounds = new THREE.Box3();
+    let activeMode = 'default';
+    let armedModeButton = null;
+    let modeImageZoom = 1;
+    let modeImagePanX = 0;
+    let modeImagePanY = 0;
+    let imageDrag = null;
+    let anatomyImageZoom = 1;
+    let anatomyImagePanX = 0;
+    let anatomyImagePanY = 0;
+    let anatomyImageDrag = null;
+
+    function resizeRenderer() {
+      const width = Math.max(container.clientWidth, 1);
+      const height = Math.max(container.clientHeight, 1);
+      renderer.setSize(width, height, false);
+      labelRenderer.setSize(width, height);
+      camera.aspect = width / height;
+      camera.updateProjectionMatrix();
+      if (model) frameModel();
+    }
+
+    function frameModel() {
+      if (!model) return;
+      const width = Math.max(container.clientWidth, 1);
+      const height = Math.max(container.clientHeight, 1);
+      camera.aspect = width / height;
+      camera.updateProjectionMatrix();
+      const aspectFactor = Math.min(camera.aspect, 1);
+      const effectiveFov = 2 * Math.atan(
+        Math.tan(THREE.MathUtils.degToRad(camera.fov / 2)) * aspectFactor
+      );
+      const distance = (modelRadius / Math.sin(effectiveFov / 2)) * 1.08;
+      camera.position.set(distance * 0.18, distance * 0.1, distance);
+      camera.near = Math.max(modelRadius / 100, 0.01);
+      camera.far = distance * 10;
+      camera.updateProjectionMatrix();
+      controls.target.set(0, 0, 0);
+      controls.minDistance = modelRadius * 0.7;
+      controls.maxDistance = distance * 5;
+      controls.update();
+    }
+
+    function setLoadingState() {
+      status.textContent = 'جارٍ تحميل المجسم...';
+      status.dataset.state = 'loading';
+      message.hidden = true;
+      modeButtons.forEach((button) => { button.disabled = true; });
+      retryButton.disabled = true;
+    }
+
+    function setModeButtonsEnabled(enabled) {
+      modeButtons.forEach((button) => { button.disabled = !enabled; });
+    }
+
+    function classifyMesh(name) {
+      const recognizedModes = Object.entries(CONFIG.modes)
+        .filter(([key, mode]) => key !== 'default' && mode.match.test(name))
+        .map(([key]) => key);
+      return recognizedModes;
+    }
+
+    function saveMeshState(mesh) {
+      const materials = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+      const originals = materials.map((material) => {
+        const baseColor = material.color ? material.color.clone() : new THREE.Color(0xffffff);
+        const baseEmissive = material.emissive ? material.emissive.clone() : new THREE.Color(0x000000);
+        const styled = new THREE.MeshStandardMaterial({
+          color: baseColor,
+          emissive: baseEmissive,
+          roughness: 0.58,
+          metalness: 0.02,
+          transparent: material.transparent,
+          opacity: material.opacity,
+          depthWrite: material.depthWrite,
+          side: material.side,
+          depthWrite: material.depthWrite
+        });
+        return {
+          material: styled,
+          color: styled.color.clone(),
+          emissive: styled.emissive.clone(),
+          transparent: styled.transparent,
+          opacity: styled.opacity,
+          visible: material.visible
+        };
+      });
+
+      mesh.material = Array.isArray(mesh.material) ? originals.map((entry) => entry.material) : originals[0].material;
+      meshStates.set(mesh, { originals, visible: mesh.visible });
+    }
+
+    function restoreMeshState(mesh, state) {
+      const restored = state.originals.map((original) => {
+        const material = original.material;
+        material.color.copy(original.color);
+        material.emissive.copy(original.emissive);
+        material.transparent = original.transparent;
+        material.opacity = original.opacity;
+        material.visible = original.visible;
+        material.depthWrite = original.depthWrite;
+        material.needsUpdate = true;
+        return material;
+      });
+      mesh.material = Array.isArray(mesh.material) ? restored : restored[0];
+      mesh.visible = state.visible;
+    }
+
+    function styleMesh(mesh, mode, isMatch, unknown) {
+      const materials = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+      materials.forEach((material) => {
+        if (mode === 'default') {
+          const gum = /gum|gingiva/i.test(mesh.name);
+          material.color.setHex(gum ? CONFIG.modes.default.gumColor : CONFIG.modes.default.color);
+          material.emissive.setHex(0x000000);
+          material.transparent = false;
+          material.opacity = 1;
+          material.depthWrite = true;
+          material.needsUpdate = true;
+          return;
+        }
+
+        if (isMatch && !unknown) {
+          material.color.setHex(CONFIG.modes[mode].color);
+          material.emissive.setHex(CONFIG.modes[mode].emissive || 0x000000);
+          material.transparent = false;
+          material.opacity = 1;
+          material.depthWrite = true;
+        } else if (CONFIG.modes[mode].dimOthers) {
+          material.color.setHex(0xa8b1b5);
+          material.emissive.setHex(0x000000);
+          material.transparent = true;
+          material.opacity = CONFIG.dimOpacity;
+          material.depthWrite = false;
+        }
+        material.needsUpdate = true;
+      });
+    }
+
+    function clearLabels() {
+      for (const label of [...labelGroup.children]) {
+        if (label.element) label.element.remove();
+      }
+      labelGroup.clear();
+    }
+
+    function createLabels(modeKey) {
+      clearLabels();
+      const labels = LABELS_BY_MODE[modeKey] || [];
+      const size = modelBounds.getSize(new THREE.Vector3());
+      const center = modelBounds.getCenter(new THREE.Vector3());
+
+      labels.forEach((item) => {
+        const element = document.createElement(item.image ? 'button' : 'div');
+        if (item.image) {
+          element.type = 'button';
+          element.addEventListener('click', () => openAnatomyViewer(item));
+          element.setAttribute('aria-label', `عرض صورة: ${item.text}`);
+        }
+        element.className = 'annotation-label';
+        element.textContent = item.text;
+
+        const label = new CSS2DObject(element);
+        label.position.set(
+          center.x + item.position[0] * size.x * 0.5,
+          center.y + item.position[1] * size.y * 0.5,
+          center.z + item.position[2] * size.z * 0.5
+        );
+        labelGroup.add(label);
+      });
+    }
+
+    function applyMode(modeKey) {
+      if (!CONFIG.modes[modeKey] || !model) return;
+      activeMode = modeKey;
+
+      model.traverse((child) => {
+        if (!child.isMesh) return;
+        const state = meshStates.get(child);
+        if (!state) return;
+        restoreMeshState(child, state);
+        const name = child.name || '';
+        const recognizedModes = classifyMesh(name);
+        const unknown = !knownMeshNames.has(child);
+        styleMesh(child, modeKey, modeKey === 'default' || recognizedModes.includes(modeKey), unknown);
+      });
+
+      modeButtons.forEach((button) => {
+        const active = button.dataset.mode === modeKey;
+        button.classList.toggle('mode-active', active);
+        button.setAttribute('aria-pressed', String(active));
+      });
+      createLabels(modeKey);
+
+      const selected = CONFIG.modes[modeKey];
+      viewerTitle.textContent = modeKey === 'default'
+        ? 'صورة ثلاثية الأبعاد للفكين والأسنان'
+        : `صورة ثلاثية الأبعاد للفكين - ${selected.label}`;
+      document.title = viewerTitle.textContent;
+      status.textContent = modeKey === 'default'
+        ? 'تم تحميل المجسم'
+        : `تم عرض ${selected.label}`;
+    }
+
+    function openAnatomyViewer(item) {
+      const imagePath = item.src || IMAGE_PATHS[item.image];
+      if (!imagePath) return;
+      anatomyImageZoom = 1;
+      anatomyImagePanX = 0;
+      anatomyImagePanY = 0;
+      anatomyImage.style.transform = 'translate(0px, 0px) scale(1)';
+      anatomyImage.hidden = false;
+      anatomyImage.style.display = 'none';
+      anatomyImage.removeAttribute('src');
+      anatomyTitle.textContent = item.text;
+      anatomyImage.alt = `صورة تشريحية: ${item.text}`;
+      anatomyCaption.textContent = item.text;
+      anatomyCaption.hidden = false;
+      anatomyFallback.hidden = true;
+      anatomyFallback.textContent = '';
+      anatomyImage.onerror = () => {
+        anatomyImage.onerror = null;
+        anatomyImage.hidden = true;
+        anatomyFallback.textContent = `لا تتوفر صورة تشريحية لـ «${item.text}». يمكنك إضافة مسار الصورة في إعدادات IMAGE_PATHS أعلى السكربت.`;
+        anatomyFallback.hidden = false;
+      };
+      anatomyImage.onload = () => {
+        anatomyImage.hidden = false;
+        anatomyImage.style.display = 'block';
+        setAnatomyImageZoom(1);
+      };
+      anatomyViewer.hidden = false;
+      anatomyImage.src = imagePath;
+      closeButton.focus();
+    }
+
+    function showModeImage(modeKey) {
+      const imagePath = IMAGE_PATHS[modeKey];
+      if (!imagePath) {
+        document.querySelector('.viewer').classList.remove('split-mode');
+        document.querySelector('.viewer').classList.add('landing-mode');
+        modeImagePreview.hidden = true;
+        studyGallery.hidden = false;
+        modeImage.removeAttribute('src');
+        return;
+      }
+
+      document.querySelector('.viewer').classList.remove('landing-mode');
+      document.querySelector('.viewer').classList.add('split-mode');
+      studyGallery.hidden = true;
+      modeImagePanX = 0;
+      modeImagePanY = 0;
+      setModeImageZoom(1);
+      const label = CONFIG.modes[modeKey].label;
+      modeImagePreview.hidden = false;
+      modeImageCaption.textContent = label;
+      modeImage.alt = `صورة ${label}`;
+      modeImageError.hidden = true;
+      modeImage.onerror = () => {
+        modeImage.onerror = null;
+        modeImage.hidden = true;
+        modeImageError.textContent = `تعذر تحميل الصورة ${imagePath}. تأكد من وجود الملف بجانب index.html.`;
+        modeImageError.hidden = false;
+      };
+      modeImage.onload = () => {
+        modeImage.hidden = false;
+        modeImageError.hidden = true;
+      };
+      modeImage.hidden = false;
+      modeImage.src = imagePath;
+    }
+
+    function setAnatomyImageZoom(zoom) {
+      anatomyImageZoom = THREE.MathUtils.clamp(zoom, 1, 5);
+      const fitScale = anatomyImage.naturalWidth && anatomyImage.naturalHeight
+        ? Math.min(
+          (window.innerWidth * 0.9) / anatomyImage.naturalWidth,
+          (window.innerHeight * 0.65) / anatomyImage.naturalHeight
+        )
+        : 1;
+      const maxPanX = anatomyImage.naturalWidth * fitScale * (anatomyImageZoom - 1) / 2;
+      const maxPanY = anatomyImage.naturalHeight * fitScale * (anatomyImageZoom - 1) / 2;
+      anatomyImagePanX = THREE.MathUtils.clamp(anatomyImagePanX, -maxPanX, maxPanX);
+      anatomyImagePanY = THREE.MathUtils.clamp(anatomyImagePanY, -maxPanY, maxPanY);
+      anatomyImage.style.transform = `translate(${anatomyImagePanX}px, ${anatomyImagePanY}px) scale(${anatomyImageZoom})`;
+      anatomyZoomInButton.disabled = anatomyImageZoom >= 5;
+      anatomyZoomOutButton.disabled = anatomyImageZoom <= 1;
+    }
+
+    function zoomAnatomyImageAt(zoom, clientX, clientY) {
+      const bounds = anatomyImage.getBoundingClientRect();
+      const localX = (clientX - bounds.left - bounds.width / 2) / anatomyImageZoom;
+      const localY = (clientY - bounds.top - bounds.height / 2) / anatomyImageZoom;
+      const nextZoom = THREE.MathUtils.clamp(zoom, 1, 5);
+      anatomyImagePanX += localX * (anatomyImageZoom - nextZoom);
+      anatomyImagePanY += localY * (anatomyImageZoom - nextZoom);
+      setAnatomyImageZoom(nextZoom);
+    }
+
+    anatomyImage.addEventListener('pointerdown', (event) => {
+      if (anatomyImageZoom <= 1 || event.button !== 0) return;
+      anatomyImageDrag = {
+        pointerId: event.pointerId,
+        startX: event.clientX,
+        startY: event.clientY,
+        panX: anatomyImagePanX,
+        panY: anatomyImagePanY
+      };
+      anatomyImage.setPointerCapture(event.pointerId);
+      anatomyImage.classList.add('is-dragging');
+      event.preventDefault();
+    });
+
+    anatomyImage.addEventListener('pointermove', (event) => {
+      if (!anatomyImageDrag || anatomyImageDrag.pointerId !== event.pointerId) return;
+      anatomyImagePanX = anatomyImageDrag.panX + event.clientX - anatomyImageDrag.startX;
+      anatomyImagePanY = anatomyImageDrag.panY + event.clientY - anatomyImageDrag.startY;
+      setAnatomyImageZoom(anatomyImageZoom);
+    });
+
+    function endAnatomyImageDrag(event) {
+      if (!anatomyImageDrag || anatomyImageDrag.pointerId !== event.pointerId) return;
+      anatomyImageDrag = null;
+      anatomyImage.classList.remove('is-dragging');
+      if (anatomyImage.hasPointerCapture(event.pointerId)) {
+        anatomyImage.releasePointerCapture(event.pointerId);
+      }
+    }
+
+    anatomyImage.addEventListener('pointerup', endAnatomyImageDrag);
+    anatomyImage.addEventListener('pointercancel', endAnatomyImageDrag);
+    anatomyImage.addEventListener('lostpointercapture', () => {
+      anatomyImageDrag = null;
+      anatomyImage.classList.remove('is-dragging');
+    });
+    anatomyImage.addEventListener('wheel', (event) => {
+      event.preventDefault();
+      const nextZoom = anatomyImageZoom + (event.deltaY < 0 ? 0.2 : -0.2);
+      zoomAnatomyImageAt(nextZoom, event.clientX, event.clientY);
+    }, { passive: false });
+
+    function setModeImageZoom(zoom) {
+      modeImageZoom = THREE.MathUtils.clamp(zoom, 1, 4);
+      const fitScale = modeImage.naturalWidth && modeImage.naturalHeight
+        ? Math.min(
+          modeImage.clientWidth / modeImage.naturalWidth,
+          modeImage.clientHeight / modeImage.naturalHeight
+        )
+        : 1;
+      const maxPanX = modeImage.naturalWidth * fitScale * (modeImageZoom - 1) / 2;
+      const maxPanY = modeImage.naturalHeight * fitScale * (modeImageZoom - 1) / 2;
+      modeImagePanX = THREE.MathUtils.clamp(modeImagePanX, -maxPanX, maxPanX);
+      modeImagePanY = THREE.MathUtils.clamp(modeImagePanY, -maxPanY, maxPanY);
+      modeImage.style.transform = `translate(${modeImagePanX}px, ${modeImagePanY}px) scale(${modeImageZoom})`;
+      zoomInButton.disabled = modeImageZoom >= 4;
+      zoomOutButton.disabled = modeImageZoom <= 1;
+    }
+
+    function zoomModeImageAt(zoom, clientX, clientY) {
+      const bounds = modeImage.getBoundingClientRect();
+      const localX = (clientX - bounds.left - bounds.width / 2) / modeImageZoom;
+      const localY = (clientY - bounds.top - bounds.height / 2) / modeImageZoom;
+      const nextZoom = THREE.MathUtils.clamp(zoom, 1, 4);
+      modeImagePanX += localX * (modeImageZoom - nextZoom);
+      modeImagePanY += localY * (modeImageZoom - nextZoom);
+      setModeImageZoom(nextZoom);
+    }
+
+    modeImage.addEventListener('pointerdown', (event) => {
+      if (modeImageZoom <= 1 || event.button !== 0) return;
+      imageDrag = {
+        pointerId: event.pointerId,
+        startX: event.clientX,
+        startY: event.clientY,
+        panX: modeImagePanX,
+        panY: modeImagePanY
+      };
+      modeImage.setPointerCapture(event.pointerId);
+      modeImage.classList.add('is-dragging');
+      event.preventDefault();
+    });
+
+    modeImage.addEventListener('pointermove', (event) => {
+      if (!imageDrag || imageDrag.pointerId !== event.pointerId) return;
+      modeImagePanX = imageDrag.panX + event.clientX - imageDrag.startX;
+      modeImagePanY = imageDrag.panY + event.clientY - imageDrag.startY;
+      setModeImageZoom(modeImageZoom);
+    });
+
+    function endImageDrag(event) {
+      if (!imageDrag || imageDrag.pointerId !== event.pointerId) return;
+      imageDrag = null;
+      modeImage.classList.remove('is-dragging');
+      if (modeImage.hasPointerCapture(event.pointerId)) {
+        modeImage.releasePointerCapture(event.pointerId);
+      }
+    }
+
+    modeImage.addEventListener('pointerup', endImageDrag);
+    modeImage.addEventListener('pointercancel', endImageDrag);
+    modeImage.addEventListener('lostpointercapture', () => {
+      imageDrag = null;
+      modeImage.classList.remove('is-dragging');
+    });
+
+    function closeAnatomyViewer() {
+      anatomyViewer.hidden = true;
+      anatomyImage.onerror = null;
+      anatomyImage.onload = null;
+      anatomyImage.removeAttribute('src');
+      anatomyImage.style.display = 'none';
+      anatomyCaption.hidden = true;
+      anatomyFallback.hidden = true;
+    }
+
+    function loadModel() {
+      setLoadingState();
+      loader.load(modelUrl, (object) => {
+        if (model) {
+          scene.remove(model);
+          model.traverse((child) => {
+            if (child.isMesh) meshStates.delete(child);
+          });
+        }
+
+        object.traverse((child) => {
+          if (!child.isMesh) return;
+          const name = child.name || '';
+          const lowerJaw = /^lowgums$/i.test(name) || /l$/i.test(name);
+          if (lowerJaw) child.position.y -= 1.2;
+          saveMeshState(child);
+
+          const recognizedModes = classifyMesh(name);
+          if (name && recognizedModes.length === 0 && !/gum|gingiva/i.test(name)) {
+            console.warn(`اسم مجموعة غير مصنف (${name})؛ سيظهر ضمن الوضع الافتراضي فقط.`);
+          } else {
+            knownMeshNames.add(child);
+          }
+          child.castShadow = true;
+          child.receiveShadow = true;
+        });
+
+        const bounds = new THREE.Box3().setFromObject(object);
+        const size = bounds.getSize(new THREE.Vector3());
+        const center = bounds.getCenter(new THREE.Vector3());
+        modelRadius = Math.max(size.length() * 0.5, 0.01);
+        object.position.sub(center);
+        model = object;
+        modelBounds.setFromObject(model);
+        scene.add(model);
+        frameModel();
+        retryButton.disabled = false;
+        setModeButtonsEnabled(true);
+        message.hidden = true;
+        applyMode(activeMode);
+        showModeImage(activeMode);
+      }, undefined, (error) => {
+        console.error('تعذر تحميل ملف Open3DModel_FIle.obj:', error);
+        status.textContent = 'تعذر تحميل المجسم';
+        status.dataset.state = 'error';
+        errorText.textContent = 'تعذر تحميل Open3DModel_FIle.obj. تأكد من وجود الملف بجانب index.html، ثم افتح الصفحة عبر خادم محلي (http://) لأن المتصفح قد يمنع التحميل من file://.';
+        message.hidden = false;
+        retryButton.disabled = false;
+      });
+    }
+
+    modeButtons.forEach((button) => {
+      button.addEventListener('click', () => {
+        if (armedModeButton !== button) {
+          armedModeButton?.setAttribute('data-armed', 'false');
+          armedModeButton = button;
+          button.setAttribute('data-armed', 'true');
+          return;
+        }
+
+        button.setAttribute('data-armed', 'false');
+        armedModeButton = null;
+        applyMode(button.dataset.mode);
+        showModeImage(button.dataset.mode);
+      });
+    });
+
+    studyCards.forEach((button) => {
+      button.addEventListener('click', () => {
+        openAnatomyViewer({
+          src: button.dataset.studyImage,
+          text: button.dataset.studyTitle
+        });
+      });
+    });
+
+    zoomInButton.addEventListener('click', () => setModeImageZoom(modeImageZoom + 0.25));
+    zoomOutButton.addEventListener('click', () => setModeImageZoom(modeImageZoom - 0.25));
+    anatomyZoomInButton.addEventListener('click', () => setAnatomyImageZoom(anatomyImageZoom + 0.25));
+    anatomyZoomOutButton.addEventListener('click', () => setAnatomyImageZoom(anatomyImageZoom - 0.25));
+    modeImagePreview.addEventListener('wheel', (event) => {
+      if (modeImagePreview.hidden) return;
+      event.preventDefault();
+      const nextZoom = modeImageZoom + (event.deltaY < 0 ? 0.2 : -0.2);
+      if (event.target === modeImage) {
+        zoomModeImageAt(nextZoom, event.clientX, event.clientY);
+      } else {
+        setModeImageZoom(nextZoom);
+      }
+    }, { passive: false });
+
+    retryButton.addEventListener('click', loadModel);
+    closeButton.addEventListener('click', closeAnatomyViewer);
+    anatomyViewer.addEventListener('click', (event) => {
+      if (event.target === anatomyViewer) closeAnatomyViewer();
+    });
+    document.addEventListener('keydown', (event) => {
+      if (event.key === 'Escape' && !anatomyViewer.hidden) closeAnatomyViewer();
+    });
+    new ResizeObserver(resizeRenderer).observe(container);
+    window.addEventListener('resize', resizeRenderer, { passive: true });
+    resizeRenderer();
+    loadModel();
+
+    function animate() {
+      requestAnimationFrame(animate);
+      controls.update();
+      renderer.render(scene, camera);
+      labelRenderer.render(scene, camera);
+    }
+    animate();
+  </script>
+</body>
+</html>
